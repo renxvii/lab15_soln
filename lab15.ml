@@ -14,7 +14,15 @@ this lab you will delve further into lazy evaluation and look at how
 laziness is implemented *natively* in OCaml with the `Lazy` module,
 which we use to implement a `NativeLazyStreams` module. *)
 
-open CS51Utils ;; (* for access to timing functions *)
+open CS51Utils ;;       (* for access to timing functions *)
+     
+  (* Digression: We've just opened `CS51Utils` above, so we can make
+     use of its components (like `Absbook.call_reporting_time`) in
+     this file. But if you want to use it in the REPL, you'll need to
+     make it accessible there as well, e.g.,
+
+        # #require "CS51Utils" ;;
+        # open CS51Utils ;;                                         *)
 
 (*====================================================================
 Part 1: Using OCaml's Lazy module
@@ -24,13 +32,13 @@ stream-based solutions is prohibitive. Chapter 17 of the textbook
 describes the use of *memoizing* to eliminate the recomputation, and
 showed an implementation in terms of refs. As described in Section
 17.3, that functionality is actually already available in OCaml
-through its Lazy module. The Lazy module introduces a new polymorphic
-type `'a Lazy.t` of delayed values of type 'a, and a new function
-`Lazy.force : 'a Lazy.t -> 'a` that forces a delayed computation
-to occur, saving the result if this is the first time the value was
-forced and simply returning the saved value on later requests. For
-instance, suppose we've defined the Fibonacci function "eagerly"
-as: *)
+through its `Lazy` module. The `Lazy` module introduces a new
+polymorphic type `'a Lazy.t` of delayed values of type 'a, and a new
+function `Lazy.force : 'a Lazy.t -> 'a` that forces a delayed
+computation to occur, saving the result if this is the first time the
+value was forced and simply returning the saved value on later
+requests. For instance, suppose we've defined the Fibonacci function
+"eagerly" as: *)
 
 let rec fib (n : int) : int =
   if n < 2 then n
@@ -56,10 +64,10 @@ microsecond. *)
 (*....................................................................
 Exercise 1. The `NativeLazyStreams` module, found in the file
 `nativeLazyStreams.ml`, is an incomplete reimplementation of the
-`LazyStreams` module from the last lab, but using OCaml's native Lazy
-module. Complete this implementation by implementing `smap`, `smap2`,
-and `sfilter` in that file. You may want to refer to the last lab,
-especially the `LazyStreams` module provided there and the lab
+`LazyStreams` module from the last lab, but using OCaml's native
+`Lazy` module. Complete this implementation by implementing `smap`,
+`smap2`, and `sfilter` in that file. You may want to refer to the last
+lab, especially the `LazyStreams` module provided there and the lab
 solution's discussion of its exercise on `sfilter`.
 ....................................................................*)
 
@@ -69,23 +77,22 @@ easily. *)
 
 open NativeLazyStreams
      
-    (* Digression: We've just opened NativeLazyStreams above, so we
-    can make use of its components in this file. But if you want to
-    use it in the REPL, you'll need to make it accessible there as
-    well, e.g.,
+  (* Digression redux: We've just opened `NativeLazyStreams` above, so
+     we can make use of its components in this file. But if you want
+     to use it in the REPL, you'll need to make it accessible there as
+     well, e.g.,
 
         # #mod_use "nativeLazyStreams.ml" ;;
         # open NativeLazyStreams ;;
 
     or 
 
-        # #use "nativeLazyStreams.ml" ;;
- *)
+        # #use "nativeLazyStreams.ml" ;;                            *)
   
 (* We implement the Fibonacci sequence as a
 `NativeLazystreams.stream`. *)
   
-let rec fibs =
+let rec fibs : int stream =
   lazy (Cons (0, lazy (Cons (1, smap2 (+) fibs (tail fibs))))) ;;
 
 (* We run it twice, generating the first 50 Fibonacci numbers: 
@@ -108,7 +115,9 @@ let rec fibs =
      24157817; 39088169; 63245986; 102334155; 165580141; 267914296; 433494437;
      701408733; 1134903170; 1836311903; 2971215073; 4807526976; 7778742049]
 
-This version is much faster, even the first time around. Why? *)
+This version is much faster than the one implemented using the
+`LazyStreams` module from the last lab, even the first time
+around. Why? *)
 
 (*....................................................................
 Exercise 2. As practice in using `NativeLazyStreams`, implement a
@@ -125,7 +134,7 @@ multiplied by the second argument. For example:
     - : float list = [1.; 2.; 4.; 8.; 16.; 32.; 64.; 128.; 256.; 512.]
 
 For more information on geometric sequences, see
-https://en.wikipedia.org/wiki/Geometric_progression.
+<https://en.wikipedia.org/wiki/Geometric_progression>.
 ....................................................................*)
 
 let rec geo init mult =
@@ -158,17 +167,17 @@ Exercise 3. Reimplement Eratosthenes' sieve now using the
 below.
 ....................................................................*)
 
-let rec nats =
+let rec nats : int stream =
   lazy (Cons (0, smap ((+) 1) nats)) ;;
  
 let not_div_by (n : int) (m : int) : bool = 
   not (m mod n = 0) ;;
 
-let rec sieve s =
+let rec sieve (s : int stream) : int stream =
   lazy (Cons (head s,
               sieve (sfilter (not_div_by (head s)) (tail s)))) ;;
 
-let primes = sieve (tail (tail nats)) ;;
+let primes : int stream = sieve (tail (tail nats)) ;;
 
 (*....................................................................
 Exercise 4. How much further can you get in computing primes now that
@@ -183,20 +192,21 @@ let rec nth (s : 'a stream) (n : int) : 'a =
 
 let _ = Printf.printf "The 2000th prime is %d\n" (nth primes 1999) ;;
 
-(* We generate the same table from last lab, now with the new sieve: *)
+(* We generate the same table from the previous lab, now with the new
+   sieve: *)
        
 exception Done ;;
 
 let prime_timing () =
-  try
-    print_endline "Testing sieve based on native lazy streams";
-    for n = 1 to 20 do
-      let count = n * 100 in
-      let _l, t = Absbook.call_timed (first count) primes in
-      Printf.printf "%4d -- %12.8f\n" count t;
-      if t > 0.5 then raise Done
-    done
-  with Done -> () ;;
+  print_endline "Testing sieve based on native lazy streams";
+  let n = ref 1 in
+  let finished = ref false in
+  while not !finished && !n < 100 do
+    let _l, t = Absbook.call_timed (first !n) primes in
+    Printf.printf "%3d -- %12.8f\n" !n t;
+    n := succ !n;
+    if t > 0.5 then finished := true
+  done ;;
 
 (* Running `prime_timing ()` to generate the table below reveals that
    the memoizing provides a dramatic increase in performance,
